@@ -1,0 +1,8 @@
+version: "3"
+services:
+  dao-monitor:
+    build: .
+    container_name: dao-monitor
+    restart: unless-stopped
+    env_file:
+      - .env

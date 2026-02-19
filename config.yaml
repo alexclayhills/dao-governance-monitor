@@ -1,0 +1,502 @@
+# DAO Forum Governance Monitor - Configuration
+# Copy this to config.yaml and update with your settings.
+#
+# =====================================================================
+# HOW TO ADD A NEW FORUM:
+# =====================================================================
+# 1. Add a new entry under "forums:" with this format:
+#
+#      - name: my_dao              # Unique short name (used in alerts)
+#        url: https://forum.mydao.org  # Base URL (no trailing slash)
+#        type: discourse            # Forum software (currently only "discourse")
+#        enabled: true              # Set to false to temporarily disable
+#        categories: []             # Filter to specific categories, or [] for all
+#
+# 2. To filter specific categories, list them:
+#        categories: [governance, security, proposals]
+#
+# 3. Most DAO forums run Discourse. You can verify by checking if
+#    https://forum.example.com/latest.json returns JSON data.
+#
+# 4. To add a NON-Discourse forum, you'd need to create a new forum
+#    class in dao_monitor/forums/ (see forums/base.py for the interface).
+# =====================================================================
+
+monitoring:
+  poll_interval: 300          # seconds between checks (5 min)
+  max_retries: 3              # retries per forum on failure
+  timeout: 30                 # HTTP request timeout (seconds)
+  detection_threshold: 1.5    # minimum score to trigger alert
+
+slack:
+  webhook_url: "${SLACK_WEBHOOK_URL}"   # Set via environment variable
+  # channel: "#dao-governance"          # Optional: override webhook default channel
+  username: "DAO Governance Monitor"
+  icon_emoji: ":bell:"
+
+database_path: "dao_monitor.db"
+
+# =====================================================================
+# FORUMS — 56 DAO governance forums (all Discourse-based)
+# =====================================================================
+# Set enabled: false for any forum you don't want to monitor.
+# With 55 forums at 5-min polling, expect ~660 API calls/hour.
+# Adjust poll_interval if you want to reduce load.
+# =====================================================================
+
+forums:
+
+  # ─────────────────────────────────────────────────
+  # MAJOR DEFI — Lending, DEX, Stablecoins
+  # ─────────────────────────────────────────────────
+
+  - name: uniswap
+    url: https://gov.uniswap.org
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: aave
+    url: https://governance.aave.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: compound
+    url: https://www.comp.xyz
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: makerdao
+    url: https://forum.makerdao.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: curve
+    url: https://gov.curve.finance
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: balancer
+    url: https://forum.balancer.fi
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: sushiswap
+    url: https://forum.sushi.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: frax
+    url: https://gov.frax.finance
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: 1inch
+    url: https://gov.1inch.network
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: dydx
+    url: https://dydx.forum
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: synthetix
+    url: https://research.synthetix.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: yearn
+    url: https://gov.yearn.fi
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: aura
+    url: https://forum.aura.finance
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: maple
+    url: https://community.maple.finance
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: angle
+    url: https://gov.angle.money
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: venus
+    url: https://community.venus.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: instadapp
+    url: https://gov.instadapp.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: moonwell
+    url: https://forum.moonwell.fi
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: euler
+    url: https://forum.euler.finance
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: morpho
+    url: https://forum.morpho.org
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: perpetual
+    url: https://gov.perp.fi
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: radiant
+    url: https://community.radiant.capital
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # LIQUID STAKING & RESTAKING
+  # ─────────────────────────────────────────────────
+
+  - name: lido
+    url: https://research.lido.fi
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: rocket_pool
+    url: https://dao.rocketpool.net
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: eigenlayer
+    url: https://forum.eigenlayer.xyz
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: stakewise
+    url: https://forum.stakewise.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # LAYER 2 — Rollups & Scaling
+  # ─────────────────────────────────────────────────
+
+  - name: arbitrum
+    url: https://forum.arbitrum.foundation
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: optimism
+    url: https://gov.optimism.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: starknet
+    url: https://community.starknet.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: zksync
+    url: https://forum.zknation.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: polygon
+    url: https://forum.polygon.technology
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: scroll
+    url: https://forum.scroll.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: linea
+    url: https://community.linea.build
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: mode
+    url: https://forum.mode.network
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: mantle
+    url: https://forum.mantle.xyz
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # LAYER 1 — Alt-L1 Chains
+  # ─────────────────────────────────────────────────
+
+  - name: aptos
+    url: https://forum.aptosfoundation.org
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: sui
+    url: https://forums.sui.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: mina
+    url: https://forums.minaprotocol.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: tron
+    url: https://forum.trondao.org
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # INFRASTRUCTURE — Wallets, Multisigs, Tooling
+  # ─────────────────────────────────────────────────
+
+  - name: safe
+    url: https://forum.safe.global
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: gnosis
+    url: https://forum.gnosis.io
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: aragon
+    url: https://forum.aragon.org
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # BRIDGES & CROSS-CHAIN
+
+  # ─────────────────────────────────────────────────
+
+  - name: hop
+    url: https://forum.hop.exchange
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: stargate
+    url: https://stargate.discourse.group
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: across
+    url: https://forum.across.to
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # NAMING, IDENTITY & PUBLIC GOODS
+  # ─────────────────────────────────────────────────
+
+  - name: ens
+    url: https://discuss.ens.domains
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: gitcoin
+    url: https://gov.gitcoin.co
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # SOCIAL, GAMING & COMMUNITY DAOs
+  # ─────────────────────────────────────────────────
+
+  - name: nouns
+    url: https://discourse.nouns.wtf
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: apecoin
+    url: https://forum.apecoin.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: decentraland
+    url: https://forum.decentraland.org
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: treasure
+    url: https://forum.treasure.lol
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: bankless
+    url: https://forum.bankless.community
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: shapeshift
+    url: https://forum.shapeshift.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: developer_dao
+    url: https://forum.developerdao.com
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # DEX AGGREGATORS & OTHER
+  # ─────────────────────────────────────────────────
+
+  - name: velora
+    url: https://gov.velora.xyz
+    type: discourse
+    enabled: true
+    categories: []
+
+  - name: gravity
+    url: https://forum.gravity.xyz
+    type: discourse
+    enabled: true
+    categories: []
+
+  # ─────────────────────────────────────────────────
+  # DISABLED — Uncomment to enable
+  # (These may be inactive, read-only, or unverified)
+  # ─────────────────────────────────────────────────
+
+  # - name: daotalk
+  #   url: https://daotalk.org
+  #   type: discourse
+  #   enabled: true
+  #   categories: []
+
+  # - name: terra_classic
+  #   url: https://classic-agora.terra.money
+  #   type: discourse
+  #   enabled: true              # NOTE: may be read-only
+  #   categories: []
+
+  # - name: mangrove
+  #   url: https://forum.mangrove.exchange
+  #   type: discourse
+  #   enabled: true
+  #   categories: []
+
+  # - name: index_coop
+  #   url: https://gov.indexcoop.com
+  #   type: discourse
+  #   enabled: true
+  #   categories: []
+
+
+# =====================================================================
+# KEYWORD PATTERNS (regex)
+# =====================================================================
+# Title matches = 2x weight, body matches = 1x weight.
+# Posts in governance/security categories get an additional 1.5x multiplier.
+#
+# To add new keywords, just add a new regex string to the appropriate group.
+# To add a new keyword group, create a new top-level key under "keywords:".
+# =====================================================================
+
+keywords:
+  governance:
+    - "governance.{0,20}(change|update|reform|overhaul|restructur)"
+    - "governance.{0,20}(proposal|framework|model)"
+    - "(proposal|vote|voting).{0,20}(mechanism|process|system|structure)"
+    - "constitution.{0,20}(amend|change|update|revis)"
+    - "dao.{0,10}(restructur|reform|upgrad)"
+    - "tokenomics.{0,20}(change|update|revis)"
+    - "quorum.{0,20}(change|update|lower|raise|adjust)"
+    - "delegate.{0,20}(power|authority|responsibilit)"
+    - "voting.{0,10}(power|weight|threshold)"
+    - "veto.{0,10}(power|right|authority)"
+    - "treasury.{0,20}(manage|allocat|diversif)"
+    - "fee.{0,10}(switch|distribut|redirect)"
+    - "token.{0,10}(buyback|burn|buy.and.burn)"
+    - "\\bRFP\\b"
+    - "request for proposal"
+    - "\\bSIP\\b|\\bAIP\\b|\\bGIP\\b|\\bFIP\\b|\\bHIP\\b|\\bBIP\\b|\\bMIP\\b|\\bTIP\\b|\\bYIP\\b"
+    - "\\b(sub.?dao|opco|operating company)\\b"
+    - "dual.{0,10}governance"
+    - "rage.?quit"
+    - "optimistic.{0,10}governance"
+
+  security:
+    - "security.{0,10}council"
+    - "security.{0,20}(commit|advisory|board)"
+    - "protocol.{0,10}council"
+    - "multisig.{0,20}(change|update|rotat|add|remov)"
+    - "signer.{0,20}(rotat|change|add|remov)"
+    - "emergency.{0,20}(power|action|protocol|response)"
+    - "guardian.{0,10}(role|power|responsibilit)"
+    - "timelock.{0,20}(change|update|modif)"
+    - "access.{0,10}control"
+    - "upgrade.{0,20}(authority|permission|key)"
+    - "bug.{0,10}bounty"
+    - "vulnerability.{0,20}(disclos|report|found)"
+    - "exploit.{0,20}(report|discov|mitigat)"
+    - "incident.{0,10}(report|response|postmortem)"
+    - "audit.{0,20}(result|finding|report)"
+    - "bridge.{0,20}(security|hack|exploit)"
+    - "oracle.{0,20}(manipulat|attack|failure)"
