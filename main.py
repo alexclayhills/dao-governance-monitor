@@ -178,6 +178,18 @@ async def run_continuous(config_path: str = "config.yaml"):
     if db_keywords:
         logger.info("loaded_db_keywords", count=len(db_keywords))
 
+    # Load any user-added forums from database
+    db_forums = state.list_user_forums()
+    for uf in db_forums:
+        from .models import ForumConfig as FC
+        fc = FC(name=uf.name, url=uf.url, type=uf.forum_type, enabled=True, categories=[])
+        config.forums.append(fc)
+        forum = create_forum(fc, http_client)
+        forums.append(forum)
+        logger.info("loaded_db_forum", name=uf.name, url=uf.url)
+    if db_forums:
+        logger.info("loaded_db_forums", count=len(db_forums))
+
     # Start interactive Slack bot if configured
     slack_bot = None
     if config.slack.bot_token and config.slack.app_token and config.slack.signing_secret:

@@ -7,6 +7,7 @@ Uses SQLAlchemy for clean database interaction.
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -25,10 +26,7 @@ Base = declarative_base()
 
 
 class SeenPost(Base):
-    """Record of a post we've seen and optionally notified about."""
-
     __tablename__ = "seen_posts"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     post_id = Column(String(255), unique=True, index=True, nullable=False)
     forum_name = Column(String(100), index=True, nullable=False)
@@ -37,20 +35,39 @@ class SeenPost(Base):
     detection_score = Column(Float, default=0.0)
     first_seen_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     notified_at = Column(DateTime, nullable=True)
-    keywords_matched = Column(Text, nullable=True)  # JSON string
+    keywords_matched = Column(Text, nullable=True)
 
 
 class NotificationLog(Base):
-    """Log of all sent notifications for auditing."""
-
     __tablename__ = "notification_log"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     post_id = Column(String(255), index=True, nullable=False)
     forum_name = Column(String(100), nullable=False)
     sent_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     slack_response = Column(Text, nullable=True)
     score = Column(Float)
+
+
+class KeywordConfig(Base):
+    __tablename__ = "keyword_configs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group = Column(String(100), nullable=False)
+    keyword_text = Column(Text, nullable=False)
+    is_regex = Column(Boolean, default=False)
+    added_by = Column(String(100), default="")
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    active = Column(Boolean, default=True)
+
+
+class ForumUserConfig(Base):
+    __tablename__ = "forum_configs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    url = Column(Text, nullable=False)
+    forum_type = Column(String(50), default="discourse")
+    enabled = Column(Boolean, default=True)
+    added_by = Column(String(100), default="")
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class StateManager:
@@ -186,7 +203,6 @@ class StateManager:
         )
 
     def get_stats(self) -> dict:
-        """Get monitoring statistics."""
         with self._get_session() as session:
             total_seen = session.query(SeenPost).count()
             total_notified = (
@@ -195,9 +211,57 @@ class StateManager:
                 .count()
             )
             total_notifications = session.query(NotificationLog).count()
-
             return {
                 "total_posts_seen": total_seen,
                 "total_posts_notified": total_notified,
                 "total_notifications_sent": total_notifications,
             }
+
+    # ── Keyword Management ────────────────────────────────────────
+
+    def add_user_keyword(self, group, pattern, added_by=""):
+        with self._get_session() as session:
+            kw = KeywordConfig(group=group, keyword_text=pattern, added_by=added_by)
+            session.add(kw)
+            session.commit()
+            logger.info("user_keyword_added", group=group, pattern=pattern)
+
+    def remove_user_keyword(self, keyword_id):
+        with self._get_session() as session:
+            kw = session.query(KeywordConfig).filter_by(id=keyword_id).first()
+            if kw:
+                session.delete(kw)
+                session.commit()
+                logger.info("user_keyword_removed", id=keyword_id)
+
+    def list_keywords(self, group=None):
+        with self._get_session() as session:
+            query = session.query(KeywordConfig).filter_by(active=True)
+            if group:
+                query = query.filter_by(group=group)
+            results = query.all()
+            session.expunge_all()
+            return results
+
+    # ── Forum Management ──────────────────────────────────────────
+
+    def add_user_forum(self, name, url, forum_type="discourse", added_by=""):
+        with self._get_session() as session:
+            forum = ForumUserConfig(name=name, url=url, forum_type=forum_type, added_by=added_by)
+            session.add(forum)
+            session.commit()
+            logger.info("user_forum_added", name=name, url=url)
+
+    def remove_user_forum(self, forum_id):
+        with self._get_session() as session:
+            forum = session.query(ForumUserConfig).filter_by(id=forum_id).first()
+            if forum:
+                session.delete(forum)
+                session.commit()
+                logger.info("user_forum_removed", id=forum_id, name=forum.name)
+
+    def list_user_forums(self):
+        with self._get_session() as session:
+            results = session.query(ForumUserConfig).filter_by(enabled=True).all()
+            session.expunge_all()
+            return results

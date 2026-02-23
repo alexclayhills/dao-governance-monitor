@@ -138,3 +138,31 @@ class ContentAnalyzer:
             score=score,
             matches=matches,
         )
+
+    def add_keyword(self, group, pattern):
+        try:
+            compiled = re.compile(pattern, re.IGNORECASE)
+        except re.error as e:
+            raise ValueError(f"Invalid regex pattern: {e}")
+        if group not in self._compiled:
+            self._compiled[group] = []
+        self._compiled[group].append(compiled)
+        if not hasattr(self, '_raw_patterns'):
+            self._raw_patterns = {}
+        if group not in self._raw_patterns:
+            self._raw_patterns[group] = []
+        self._raw_patterns[group].append(pattern)
+        logger.info("keyword_added", group=group, pattern=pattern)
+
+    def remove_keyword(self, group, pattern):
+        if group in self._compiled:
+            self._compiled[group] = [p for p in self._compiled[group] if p.pattern != pattern]
+        if hasattr(self, '_raw_patterns') and group in self._raw_patterns:
+            self._raw_patterns[group] = [p for p in self._raw_patterns[group] if p != pattern]
+        logger.info("keyword_removed", group=group, pattern=pattern)
+
+    def get_all_keywords(self):
+        result = {}
+        for group, patterns in self._compiled.items():
+            result[group] = [p.pattern for p in patterns]
+        return result

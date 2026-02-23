@@ -1,4 +1,4 @@
-"""Interactive Slack bot for managing keywords via buttons and modals."""
+"""Interactive Slack bot for managing keywords and forums via buttons and modals."""
 
 import asyncio
 import json
@@ -8,9 +8,10 @@ import threading
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ..models import SlackConfig
+from ..models import SlackConfig, ForumConfig
 from ..monitoring.analyzer import ContentAnalyzer
 from ..monitoring.state_manager import StateManager
+from ..forums.registry import create_forum
 from ..utils.logger import get_logger
 
 logger = get_logger("slack_bot")
@@ -104,6 +105,74 @@ class SlackBot:
             user_id = body["user"]["id"]
             client.chat_postMessage(channel=user_id, text=f"Starting full scan for the last *{days_back} days*... This may take a few minutes.", mrkdwn=True)
             self._run_full_scan(days_back, user_id, client)
+
+        # ── Forum Handlers ────────────────────────────────────────
+
+        @self.app.command("/forums")
+        def handle_forums_command(ack, body, client):
+            ack()
+            self._show_forums_home(body["channel_id"], body["user_id"], client)
+
+        @self.app.action("view_forums")
+        def handle_view_forums(ack, body, client):
+            ack()
+            self._show_forums_list(body["channel"]["id"], client)
+
+        @self.app.action("add_forum")
+        def handle_add_forum_button(ack, body, client):
+            ack()
+            self._open_add_forum_modal(body["trigger_id"], client)
+
+        @self.app.action("remove_forum")
+        def handle_remove_forum_button(ack, body, client):
+            ack()
+            self._open_remove_forum_modal(body["trigger_id"], client)
+
+        @self.app.view("add_forum_modal")
+        def handle_add_forum_submission(ack, body, view, client):
+            values = view["state"]["values"]
+            name = values["forum_name_block"]["forum_name_input"]["value"].strip().lower().replace(" ", "_")
+            url = values["forum_url_block"]["forum_url_input"]["value"].strip().rstrip("/")
+            if not url.startswith("http"):
+                url = "https://" + url
+            if not name:
+                ack(response_action="errors", errors={"forum_name_block": "Name is required"})
+                return
+            if not url:
+                ack(response_action="errors", errors={"forum_url_block": "URL is required"})
+                return
+            ack()
+            user_id = body["user"]["id"]
+            self.state.add_user_forum(name, url, added_by=user_id)
+            fc = ForumConfig(name=name, url=url, type="discourse", enabled=True, categories=[])
+            if self.config:
+                self.config.forums.append(fc)
+            if self.http_client:
+                forum = create_forum(fc, self.http_client)
+                if not hasattr(self, '_user_forums'):
+                    self._user_forums = []
+                self._user_forums.append(forum)
+            client.chat_postMessage(channel=user_id, text=f"Forum added: *{name}* (`{url}`)\nIt will be monitored starting next cycle.", mrkdwn=True)
+            logger.info("forum_added_via_slack", name=name, url=url, user=user_id)
+
+        @self.app.view("remove_forum_modal")
+        def handle_remove_forum_submission(ack, body, view, client):
+            ack()
+            values = view["state"]["values"]
+            selected = values["remove_forum_block"]["remove_forum_select"]["selected_options"]
+            user_id = body["user"]["id"]
+            removed = []
+            for option in selected:
+                parts = option["value"].split(":", 1)
+                if len(parts) == 2:
+                    forum_id, forum_name = int(parts[0]), parts[1]
+                    self.state.remove_user_forum(forum_id)
+                    if self.config:
+                        self.config.forums = [f for f in self.config.forums if f.name != forum_name]
+                    removed.append(f"*{forum_name}*")
+            if removed:
+                client.chat_postMessage(channel=user_id, text="Removed forums:\n" + "\n".join(f"- {r}" for r in removed), mrkdwn=True)
+                logger.info("forums_removed_via_slack", count=len(removed), user=user_id)
 
     def _show_keywords_home(self, channel_id, user_id, client):
         all_keywords = self.analyzer.get_all_keywords()
@@ -204,6 +273,71 @@ class SlackBot:
             ]
         }
         client.views_open(trigger_id=trigger_id, view=modal)
+
+    # ── Forum UI Methods ────────────────────────────────────────
+
+    def _show_forums_home(self, channel_id, user_id, client):
+        config_forums = len(self.config.forums) if self.config else 0
+        db_forums = self.state.list_user_forums()
+        blocks = [
+            {"type": "header", "text": {"type": "plain_text", "text": "DAO Governance Monitor - Forums"}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"Currently monitoring *{config_forums} forums*. *{len(db_forums)}* added via Slack."}},
+            {"type": "divider"},
+            {"type": "actions", "elements": [
+                {"type": "button", "text": {"type": "plain_text", "text": "View All Forums"}, "action_id": "view_forums", "style": "primary"},
+                {"type": "button", "text": {"type": "plain_text", "text": "Add Forum"}, "action_id": "add_forum"},
+                {"type": "button", "text": {"type": "plain_text", "text": "Remove Forum"}, "action_id": "remove_forum", "style": "danger"},
+            ]},
+        ]
+        client.chat_postMessage(channel=channel_id, blocks=blocks, text="Forum Management")
+
+    def _show_forums_list(self, channel_id, client):
+        db_forums = self.state.list_user_forums()
+        db_names = {f.name for f in db_forums}
+        blocks = [{"type": "header", "text": {"type": "plain_text", "text": "Monitored Forums"}}]
+        if self.config:
+            forum_lines = []
+            for f in self.config.forums:
+                if f.enabled:
+                    marker = " (user-added)" if f.name in db_names else ""
+                    forum_lines.append(f"`{f.name}` - {f.url}{marker}")
+            text = "\n".join(forum_lines[:50])
+            remaining = len(forum_lines) - 50
+            if remaining > 0:
+                text += f"\n_...and {remaining} more_"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+        client.chat_postMessage(channel=channel_id, blocks=blocks, text="Forums List")
+
+    def _open_add_forum_modal(self, trigger_id, client):
+        modal = {
+            "type": "modal",
+            "callback_id": "add_forum_modal",
+            "title": {"type": "plain_text", "text": "Add Forum"},
+            "submit": {"type": "plain_text", "text": "Add"},
+            "blocks": [
+                {"type": "section", "text": {"type": "mrkdwn", "text": "Add a new Discourse forum to monitor."}},
+                {"type": "input", "block_id": "forum_name_block", "element": {"type": "plain_text_input", "action_id": "forum_name_input", "placeholder": {"type": "plain_text", "text": "e.g., cowswap"}}, "label": {"type": "plain_text", "text": "Forum Name"}, "hint": {"type": "plain_text", "text": "A short unique name (no spaces)."}},
+                {"type": "input", "block_id": "forum_url_block", "element": {"type": "plain_text_input", "action_id": "forum_url_input", "placeholder": {"type": "plain_text", "text": "e.g., https://forum.cow.fi"}}, "label": {"type": "plain_text", "text": "Forum URL"}, "hint": {"type": "plain_text", "text": "The base URL of the Discourse forum."}},
+            ]
+        }
+        client.views_open(trigger_id=trigger_id, view=modal)
+
+    def _open_remove_forum_modal(self, trigger_id, client):
+        db_forums = self.state.list_user_forums()
+        if not db_forums:
+            modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No user-added forums to remove. Only forums added via Slack can be removed here."}}]}
+            client.views_open(trigger_id=trigger_id, view=modal)
+            return
+        options = []
+        for f in db_forums:
+            label = f"{f.name} - {f.url}"
+            if len(label) > 75:
+                label = label[:72] + "..."
+            options.append({"text": {"type": "plain_text", "text": label}, "value": f"{f.id}:{f.name}"})
+        modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "submit": {"type": "plain_text", "text": "Remove Selected"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select forums to remove:"}}, {"type": "input", "block_id": "remove_forum_block", "element": {"type": "checkboxes", "action_id": "remove_forum_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "User-Added Forums"}}]}
+        client.views_open(trigger_id=trigger_id, view=modal)
+
+    # ── Scanning ──────────────────────────────────────────────────
 
     def _run_backfill_scan(self, keyword, group, days, user_id, client):
         if not self.config or not self.http_client:
