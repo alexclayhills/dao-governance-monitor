@@ -353,8 +353,7 @@ class SlackBot:
             modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No keywords available to remove or disable."}}]}
             client.views_open(trigger_id=trigger_id, view=modal)
             return
-        # Slack checkboxes max 10 options — show most relevant
-        modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "submit": {"type": "plain_text", "text": "Remove / Disable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select keywords to remove. User-added keywords are deleted. Built-in keywords are disabled (can be re-enabled later)."}}, {"type": "input", "block_id": "remove_block", "element": {"type": "checkboxes", "action_id": "remove_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Keywords"}}]}
+        modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "submit": {"type": "plain_text", "text": "Remove / Disable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select keywords to remove. User-added keywords are deleted. Built-in keywords are disabled (can be re-enabled later)."}}, {"type": "input", "block_id": "remove_block", "element": {"type": "multi_static_select", "action_id": "remove_select", "placeholder": {"type": "plain_text", "text": "Search and select keywords..."}, "options": options[:100]}, "label": {"type": "plain_text", "text": "Keywords"}}]}
         client.views_open(trigger_id=trigger_id, view=modal)
 
     def _open_scan_modal(self, trigger_id, client):
@@ -463,7 +462,7 @@ class SlackBot:
             modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No forums available to remove or disable."}}]}
             client.views_open(trigger_id=trigger_id, view=modal)
             return
-        modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "submit": {"type": "plain_text", "text": "Remove / Disable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select forums to remove. User-added forums are deleted. Built-in forums are disabled (can be re-enabled later)."}}, {"type": "input", "block_id": "remove_forum_block", "element": {"type": "checkboxes", "action_id": "remove_forum_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Forums"}}]}
+        modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "submit": {"type": "plain_text", "text": "Remove / Disable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select forums to remove. User-added forums are deleted. Built-in forums are disabled (can be re-enabled later)."}}, {"type": "input", "block_id": "remove_forum_block", "element": {"type": "multi_static_select", "action_id": "remove_forum_select", "placeholder": {"type": "plain_text", "text": "Search and select forums..."}, "options": options[:100]}, "label": {"type": "plain_text", "text": "Forums"}}]}
         client.views_open(trigger_id=trigger_id, view=modal)
 
     # ── Re-enable Modals ────────────────────────────────────────
@@ -482,7 +481,7 @@ class SlackBot:
                 if len(label) > 75:
                     label = label[:72] + "..."
                 options.append({"text": {"type": "plain_text", "text": label}, "value": d.item_key})
-        modal = {"type": "modal", "callback_id": "enable_keyword_modal", "title": {"type": "plain_text", "text": "Re-enable Keywords"}, "submit": {"type": "plain_text", "text": "Re-enable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select disabled keywords to re-enable:"}}, {"type": "input", "block_id": "enable_block", "element": {"type": "checkboxes", "action_id": "enable_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Disabled Keywords"}}]}
+        modal = {"type": "modal", "callback_id": "enable_keyword_modal", "title": {"type": "plain_text", "text": "Re-enable Keywords"}, "submit": {"type": "plain_text", "text": "Re-enable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select disabled keywords to re-enable:"}}, {"type": "input", "block_id": "enable_block", "element": {"type": "multi_static_select", "action_id": "enable_select", "placeholder": {"type": "plain_text", "text": "Search and select keywords..."}, "options": options[:100]}, "label": {"type": "plain_text", "text": "Disabled Keywords"}}]}
         client.views_open(trigger_id=trigger_id, view=modal)
 
     def _open_enable_forums_modal(self, trigger_id, client):
@@ -497,7 +496,7 @@ class SlackBot:
             if len(label) > 75:
                 label = label[:72] + "..."
             options.append({"text": {"type": "plain_text", "text": label}, "value": d.item_key})
-        modal = {"type": "modal", "callback_id": "enable_forum_modal", "title": {"type": "plain_text", "text": "Re-enable Forums"}, "submit": {"type": "plain_text", "text": "Re-enable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select disabled forums to re-enable:"}}, {"type": "input", "block_id": "enable_forum_block", "element": {"type": "checkboxes", "action_id": "enable_forum_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Disabled Forums"}}]}
+        modal = {"type": "modal", "callback_id": "enable_forum_modal", "title": {"type": "plain_text", "text": "Re-enable Forums"}, "submit": {"type": "plain_text", "text": "Re-enable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select disabled forums to re-enable:"}}, {"type": "input", "block_id": "enable_forum_block", "element": {"type": "multi_static_select", "action_id": "enable_forum_select", "placeholder": {"type": "plain_text", "text": "Search and select forums..."}, "options": options[:100]}, "label": {"type": "plain_text", "text": "Disabled Forums"}}]}
         client.views_open(trigger_id=trigger_id, view=modal)
 
     # ── Scanning ──────────────────────────────────────────────────
