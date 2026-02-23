@@ -178,6 +178,17 @@ async def run_continuous(config_path: str = "config.yaml"):
     if db_keywords:
         logger.info("loaded_db_keywords", count=len(db_keywords))
 
+    # Apply disabled keywords (remove from analyzer)
+    disabled_keywords = state.list_disabled_items("keyword")
+    for d in disabled_keywords:
+        parts = d.item_key.split(":", 1)
+        if len(parts) == 2:
+            group, pattern = parts[0], parts[1]
+            analyzer.remove_keyword(group, pattern)
+            logger.info("keyword_disabled_on_startup", group=group, pattern=pattern)
+    if disabled_keywords:
+        logger.info("applied_disabled_keywords", count=len(disabled_keywords))
+
     # Load any user-added forums from database
     db_forums = state.list_user_forums()
     for uf in db_forums:
@@ -189,6 +200,18 @@ async def run_continuous(config_path: str = "config.yaml"):
         logger.info("loaded_db_forum", name=uf.name, url=uf.url)
     if db_forums:
         logger.info("loaded_db_forums", count=len(db_forums))
+
+    # Apply disabled forums (mark as disabled in config)
+    disabled_forums = state.list_disabled_items("forum")
+    for d in disabled_forums:
+        for fc in config.forums:
+            if fc.name == d.item_key:
+                fc.enabled = False
+                logger.info("forum_disabled_on_startup", name=fc.name)
+        # Also remove from active forums list
+        forums = [f for f in forums if f.name != d.item_key]
+    if disabled_forums:
+        logger.info("applied_disabled_forums", count=len(disabled_forums))
 
     # Start interactive Slack bot if configured
     slack_bot = None

@@ -87,15 +87,51 @@ class SlackBot:
             user_id = body["user"]["id"]
             removed = []
             for option in selected:
-                parts = option["value"].split(":", 2)
-                if len(parts) == 3:
-                    kw_id, group, pattern = int(parts[0]), parts[1], parts[2]
-                    self.state.remove_user_keyword(kw_id)
-                    self.analyzer.remove_keyword(group, pattern)
-                    removed.append(f"`{pattern}` from *{group}*")
+                val = option["value"]
+                if val.startswith("db:"):
+                    # User-added keyword — delete from database
+                    parts = val[3:].split(":", 2)
+                    if len(parts) == 3:
+                        kw_id, group, pattern = int(parts[0]), parts[1], parts[2]
+                        self.state.remove_user_keyword(kw_id)
+                        self.analyzer.remove_keyword(group, pattern)
+                        removed.append(f"`{pattern}` from *{group}* (deleted)")
+                elif val.startswith("cfg:"):
+                    # Built-in keyword — disable it
+                    parts = val[4:].split(":", 1)
+                    if len(parts) == 2:
+                        group, pattern = parts[0], parts[1]
+                        item_key = f"{group}:{pattern}"
+                        self.state.disable_item("keyword", item_key, disabled_by=user_id)
+                        self.analyzer.remove_keyword(group, pattern)
+                        removed.append(f"`{pattern}` from *{group}* (disabled)")
             if removed:
                 client.chat_postMessage(channel=user_id, text="Removed keywords:\n" + "\n".join(f"- {r}" for r in removed), mrkdwn=True)
                 logger.info("keywords_removed_via_slack", count=len(removed), user=user_id)
+
+        @self.app.action("enable_keywords")
+        def handle_enable_keywords(ack, body, client):
+            ack()
+            self._open_enable_keywords_modal(body["trigger_id"], client)
+
+        @self.app.view("enable_keyword_modal")
+        def handle_enable_keyword_submission(ack, body, view, client):
+            ack()
+            values = view["state"]["values"]
+            selected = values["enable_block"]["enable_select"]["selected_options"]
+            user_id = body["user"]["id"]
+            enabled = []
+            for option in selected:
+                item_key = option["value"]
+                parts = item_key.split(":", 1)
+                if len(parts) == 2:
+                    group, pattern = parts[0], parts[1]
+                    self.state.enable_item("keyword", item_key)
+                    self.analyzer.add_keyword(group, pattern)
+                    enabled.append(f"`{pattern}` in *{group}*")
+            if enabled:
+                client.chat_postMessage(channel=user_id, text="Re-enabled keywords:\n" + "\n".join(f"- {e}" for e in enabled), mrkdwn=True)
+                logger.info("keywords_enabled_via_slack", count=len(enabled), user=user_id)
 
         @self.app.view("scan_modal")
         def handle_scan_submission(ack, body, view, client):
@@ -163,29 +199,73 @@ class SlackBot:
             user_id = body["user"]["id"]
             removed = []
             for option in selected:
-                parts = option["value"].split(":", 1)
-                if len(parts) == 2:
-                    forum_id, forum_name = int(parts[0]), parts[1]
-                    self.state.remove_user_forum(forum_id)
+                val = option["value"]
+                if val.startswith("db:"):
+                    # User-added forum — delete from database
+                    parts = val[3:].split(":", 1)
+                    if len(parts) == 2:
+                        forum_id, forum_name = int(parts[0]), parts[1]
+                        self.state.remove_user_forum(forum_id)
+                        if self.config:
+                            self.config.forums = [f for f in self.config.forums if f.name != forum_name]
+                        removed.append(f"*{forum_name}* (deleted)")
+                elif val.startswith("cfg:"):
+                    # Built-in forum — disable it
+                    forum_name = val[4:]
+                    self.state.disable_item("forum", forum_name, disabled_by=user_id)
                     if self.config:
-                        self.config.forums = [f for f in self.config.forums if f.name != forum_name]
-                    removed.append(f"*{forum_name}*")
+                        for f in self.config.forums:
+                            if f.name == forum_name:
+                                f.enabled = False
+                    removed.append(f"*{forum_name}* (disabled)")
             if removed:
                 client.chat_postMessage(channel=user_id, text="Removed forums:\n" + "\n".join(f"- {r}" for r in removed), mrkdwn=True)
                 logger.info("forums_removed_via_slack", count=len(removed), user=user_id)
 
+        @self.app.action("enable_forums")
+        def handle_enable_forums(ack, body, client):
+            ack()
+            self._open_enable_forums_modal(body["trigger_id"], client)
+
+        @self.app.view("enable_forum_modal")
+        def handle_enable_forum_submission(ack, body, view, client):
+            ack()
+            values = view["state"]["values"]
+            selected = values["enable_forum_block"]["enable_forum_select"]["selected_options"]
+            user_id = body["user"]["id"]
+            enabled = []
+            for option in selected:
+                forum_name = option["value"]
+                self.state.enable_item("forum", forum_name)
+                if self.config:
+                    for f in self.config.forums:
+                        if f.name == forum_name:
+                            f.enabled = True
+                enabled.append(f"*{forum_name}*")
+            if enabled:
+                client.chat_postMessage(channel=user_id, text="Re-enabled forums:\n" + "\n".join(f"- {e}" for e in enabled), mrkdwn=True)
+                logger.info("forums_enabled_via_slack", count=len(enabled), user=user_id)
+
     def _show_keywords_home(self, channel_id, user_id, client):
         all_keywords = self.analyzer.get_all_keywords()
         total = sum(len(v) for v in all_keywords.values())
+        disabled_kws = self.state.list_disabled_items("keyword")
+        disabled_count = len(disabled_kws)
+        status_text = f"Currently monitoring *{total} keywords* across *{len(all_keywords)} groups*."
+        if disabled_count > 0:
+            status_text += f"\n_{disabled_count} keyword(s) disabled._"
+        buttons = [
+            {"type": "button", "text": {"type": "plain_text", "text": "View All Keywords"}, "action_id": "view_keywords", "style": "primary"},
+            {"type": "button", "text": {"type": "plain_text", "text": "Add Keyword"}, "action_id": "add_keyword"},
+            {"type": "button", "text": {"type": "plain_text", "text": "Remove Keyword"}, "action_id": "remove_keyword", "style": "danger"},
+        ]
+        if disabled_count > 0:
+            buttons.append({"type": "button", "text": {"type": "plain_text", "text": "Re-enable Keywords"}, "action_id": "enable_keywords"})
         blocks = [
             {"type": "header", "text": {"type": "plain_text", "text": "DAO Governance Monitor - Keywords"}},
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"Currently monitoring *{total} keywords* across *{len(all_keywords)} groups*."}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": status_text}},
             {"type": "divider"},
-            {"type": "actions", "elements": [
-                {"type": "button", "text": {"type": "plain_text", "text": "View All Keywords"}, "action_id": "view_keywords", "style": "primary"},
-                {"type": "button", "text": {"type": "plain_text", "text": "Add Keyword"}, "action_id": "add_keyword"},
-                {"type": "button", "text": {"type": "plain_text", "text": "Remove Keyword"}, "action_id": "remove_keyword", "style": "danger"},
-            ]},
+            {"type": "actions", "elements": buttons},
             {"type": "divider"},
             {"type": "actions", "elements": [
                 {"type": "button", "text": {"type": "plain_text", "text": "Run Historical Scan"}, "action_id": "run_scan"},
@@ -197,6 +277,8 @@ class SlackBot:
         all_keywords = self.analyzer.get_all_keywords()
         db_keywords = self.state.list_keywords()
         db_patterns = {kw.keyword_text for kw in db_keywords}
+        disabled_kws = self.state.list_disabled_items("keyword")
+        disabled_keys = {d.item_key for d in disabled_kws}
         blocks = [{"type": "header", "text": {"type": "plain_text", "text": "Current Keywords"}}]
         for group, patterns in all_keywords.items():
             keyword_lines = []
@@ -208,7 +290,17 @@ class SlackBot:
             if remaining > 0:
                 text += f"\n_...and {remaining} more_"
             blocks.append({"type": "divider"})
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*{group.upper()}* ({len(patterns)} patterns)\n{text}"}})
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*{group.upper()}* ({len(patterns)} active)\n{text}"}})
+        # Show disabled keywords
+        if disabled_keys:
+            disabled_lines = []
+            for key in disabled_keys:
+                parts = key.split(":", 1)
+                if len(parts) == 2:
+                    disabled_lines.append(f"~`{parts[1]}`~ from *{parts[0]}*")
+            if disabled_lines:
+                blocks.append({"type": "divider"})
+                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*DISABLED* ({len(disabled_lines)})\n" + "\n".join(disabled_lines[:15])}})
         client.chat_postMessage(channel=channel_id, blocks=blocks, text="Current Keywords List")
 
     def _open_add_modal(self, trigger_id, client):
@@ -240,17 +332,29 @@ class SlackBot:
 
     def _open_remove_modal(self, trigger_id, client):
         db_keywords = self.state.list_keywords()
-        if not db_keywords:
-            modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No user-added keywords to remove."}}]}
-            client.views_open(trigger_id=trigger_id, view=modal)
-            return
+        all_keywords = self.analyzer.get_all_keywords()
+        db_patterns = {kw.keyword_text for kw in db_keywords}
         options = []
+        # Add user-added keywords (these get fully deleted)
         for kw in db_keywords:
-            label = f"[{kw.group}] {kw.keyword_text}"
+            label = f"[{kw.group}] {kw.keyword_text} (user-added)"
             if len(label) > 75:
                 label = label[:72] + "..."
-            options.append({"text": {"type": "plain_text", "text": label}, "value": f"{kw.id}:{kw.group}:{kw.keyword_text}"})
-        modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "submit": {"type": "plain_text", "text": "Remove Selected"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select keywords to remove:"}}, {"type": "input", "block_id": "remove_block", "element": {"type": "checkboxes", "action_id": "remove_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "User-Added Keywords"}}]}
+            options.append({"text": {"type": "plain_text", "text": label}, "value": f"db:{kw.id}:{kw.group}:{kw.keyword_text}"})
+        # Add built-in keywords (these get disabled)
+        for group, patterns in all_keywords.items():
+            for p in patterns:
+                if p not in db_patterns:
+                    label = f"[{group}] {p} (built-in)"
+                    if len(label) > 75:
+                        label = label[:72] + "..."
+                    options.append({"text": {"type": "plain_text", "text": label}, "value": f"cfg:{group}:{p}"})
+        if not options:
+            modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No keywords available to remove or disable."}}]}
+            client.views_open(trigger_id=trigger_id, view=modal)
+            return
+        # Slack checkboxes max 10 options — show most relevant
+        modal = {"type": "modal", "callback_id": "remove_keyword_modal", "title": {"type": "plain_text", "text": "Remove Keywords"}, "submit": {"type": "plain_text", "text": "Remove / Disable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select keywords to remove. User-added keywords are deleted. Built-in keywords are disabled (can be re-enabled later)."}}, {"type": "input", "block_id": "remove_block", "element": {"type": "checkboxes", "action_id": "remove_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Keywords"}}]}
         client.views_open(trigger_id=trigger_id, view=modal)
 
     def _open_scan_modal(self, trigger_id, client):
@@ -277,35 +381,50 @@ class SlackBot:
     # ── Forum UI Methods ────────────────────────────────────────
 
     def _show_forums_home(self, channel_id, user_id, client):
-        config_forums = len(self.config.forums) if self.config else 0
+        active_forums = len([f for f in self.config.forums if f.enabled]) if self.config else 0
         db_forums = self.state.list_user_forums()
+        disabled_forums = self.state.list_disabled_items("forum")
+        disabled_count = len(disabled_forums)
+        status_text = f"Currently monitoring *{active_forums} forums*. *{len(db_forums)}* added via Slack."
+        if disabled_count > 0:
+            status_text += f"\n_{disabled_count} forum(s) disabled._"
+        buttons = [
+            {"type": "button", "text": {"type": "plain_text", "text": "View All Forums"}, "action_id": "view_forums", "style": "primary"},
+            {"type": "button", "text": {"type": "plain_text", "text": "Add Forum"}, "action_id": "add_forum"},
+            {"type": "button", "text": {"type": "plain_text", "text": "Remove Forum"}, "action_id": "remove_forum", "style": "danger"},
+        ]
+        if disabled_count > 0:
+            buttons.append({"type": "button", "text": {"type": "plain_text", "text": "Re-enable Forums"}, "action_id": "enable_forums"})
         blocks = [
             {"type": "header", "text": {"type": "plain_text", "text": "DAO Governance Monitor - Forums"}},
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"Currently monitoring *{config_forums} forums*. *{len(db_forums)}* added via Slack."}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": status_text}},
             {"type": "divider"},
-            {"type": "actions", "elements": [
-                {"type": "button", "text": {"type": "plain_text", "text": "View All Forums"}, "action_id": "view_forums", "style": "primary"},
-                {"type": "button", "text": {"type": "plain_text", "text": "Add Forum"}, "action_id": "add_forum"},
-                {"type": "button", "text": {"type": "plain_text", "text": "Remove Forum"}, "action_id": "remove_forum", "style": "danger"},
-            ]},
+            {"type": "actions", "elements": buttons},
         ]
         client.chat_postMessage(channel=channel_id, blocks=blocks, text="Forum Management")
 
     def _show_forums_list(self, channel_id, client):
         db_forums = self.state.list_user_forums()
         db_names = {f.name for f in db_forums}
+        disabled_forums = self.state.list_disabled_items("forum")
+        disabled_names = {d.item_key for d in disabled_forums}
         blocks = [{"type": "header", "text": {"type": "plain_text", "text": "Monitored Forums"}}]
         if self.config:
-            forum_lines = []
+            active_lines = []
             for f in self.config.forums:
                 if f.enabled:
                     marker = " (user-added)" if f.name in db_names else ""
-                    forum_lines.append(f"`{f.name}` - {f.url}{marker}")
-            text = "\n".join(forum_lines[:50])
-            remaining = len(forum_lines) - 50
+                    active_lines.append(f"`{f.name}` - {f.url}{marker}")
+            text = "\n".join(active_lines[:50])
+            remaining = len(active_lines) - 50
             if remaining > 0:
                 text += f"\n_...and {remaining} more_"
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text or "_No active forums._"}})
+            # Show disabled forums
+            if disabled_names:
+                disabled_lines = [f"~`{name}`~" for name in disabled_names]
+                blocks.append({"type": "divider"})
+                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*DISABLED* ({len(disabled_lines)})\n" + "\n".join(disabled_lines[:20])}})
         client.chat_postMessage(channel=channel_id, blocks=blocks, text="Forums List")
 
     def _open_add_forum_modal(self, trigger_id, client):
@@ -324,17 +443,61 @@ class SlackBot:
 
     def _open_remove_forum_modal(self, trigger_id, client):
         db_forums = self.state.list_user_forums()
-        if not db_forums:
-            modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No user-added forums to remove. Only forums added via Slack can be removed here."}}]}
+        db_names = {f.name for f in db_forums}
+        options = []
+        # User-added forums (fully deleted)
+        for f in db_forums:
+            label = f"{f.name} (user-added)"
+            if len(label) > 75:
+                label = label[:72] + "..."
+            options.append({"text": {"type": "plain_text", "text": label}, "value": f"db:{f.id}:{f.name}"})
+        # Built-in forums (disabled)
+        if self.config:
+            for f in self.config.forums:
+                if f.enabled and f.name not in db_names:
+                    label = f"{f.name} (built-in)"
+                    if len(label) > 75:
+                        label = label[:72] + "..."
+                    options.append({"text": {"type": "plain_text", "text": label}, "value": f"cfg:{f.name}"})
+        if not options:
+            modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No forums available to remove or disable."}}]}
+            client.views_open(trigger_id=trigger_id, view=modal)
+            return
+        modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "submit": {"type": "plain_text", "text": "Remove / Disable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select forums to remove. User-added forums are deleted. Built-in forums are disabled (can be re-enabled later)."}}, {"type": "input", "block_id": "remove_forum_block", "element": {"type": "checkboxes", "action_id": "remove_forum_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Forums"}}]}
+        client.views_open(trigger_id=trigger_id, view=modal)
+
+    # ── Re-enable Modals ────────────────────────────────────────
+
+    def _open_enable_keywords_modal(self, trigger_id, client):
+        disabled = self.state.list_disabled_items("keyword")
+        if not disabled:
+            modal = {"type": "modal", "callback_id": "enable_keyword_modal", "title": {"type": "plain_text", "text": "Re-enable Keywords"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No disabled keywords to re-enable."}}]}
             client.views_open(trigger_id=trigger_id, view=modal)
             return
         options = []
-        for f in db_forums:
-            label = f"{f.name} - {f.url}"
+        for d in disabled:
+            parts = d.item_key.split(":", 1)
+            if len(parts) == 2:
+                label = f"[{parts[0]}] {parts[1]}"
+                if len(label) > 75:
+                    label = label[:72] + "..."
+                options.append({"text": {"type": "plain_text", "text": label}, "value": d.item_key})
+        modal = {"type": "modal", "callback_id": "enable_keyword_modal", "title": {"type": "plain_text", "text": "Re-enable Keywords"}, "submit": {"type": "plain_text", "text": "Re-enable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select disabled keywords to re-enable:"}}, {"type": "input", "block_id": "enable_block", "element": {"type": "checkboxes", "action_id": "enable_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Disabled Keywords"}}]}
+        client.views_open(trigger_id=trigger_id, view=modal)
+
+    def _open_enable_forums_modal(self, trigger_id, client):
+        disabled = self.state.list_disabled_items("forum")
+        if not disabled:
+            modal = {"type": "modal", "callback_id": "enable_forum_modal", "title": {"type": "plain_text", "text": "Re-enable Forums"}, "close": {"type": "plain_text", "text": "Close"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "No disabled forums to re-enable."}}]}
+            client.views_open(trigger_id=trigger_id, view=modal)
+            return
+        options = []
+        for d in disabled:
+            label = d.item_key
             if len(label) > 75:
                 label = label[:72] + "..."
-            options.append({"text": {"type": "plain_text", "text": label}, "value": f"{f.id}:{f.name}"})
-        modal = {"type": "modal", "callback_id": "remove_forum_modal", "title": {"type": "plain_text", "text": "Remove Forums"}, "submit": {"type": "plain_text", "text": "Remove Selected"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select forums to remove:"}}, {"type": "input", "block_id": "remove_forum_block", "element": {"type": "checkboxes", "action_id": "remove_forum_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "User-Added Forums"}}]}
+            options.append({"text": {"type": "plain_text", "text": label}, "value": d.item_key})
+        modal = {"type": "modal", "callback_id": "enable_forum_modal", "title": {"type": "plain_text", "text": "Re-enable Forums"}, "submit": {"type": "plain_text", "text": "Re-enable"}, "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Select disabled forums to re-enable:"}}, {"type": "input", "block_id": "enable_forum_block", "element": {"type": "checkboxes", "action_id": "enable_forum_select", "options": options[:10]}, "label": {"type": "plain_text", "text": "Disabled Forums"}}]}
         client.views_open(trigger_id=trigger_id, view=modal)
 
     # ── Scanning ──────────────────────────────────────────────────

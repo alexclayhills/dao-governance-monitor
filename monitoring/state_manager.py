@@ -70,6 +70,16 @@ class ForumUserConfig(Base):
     added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class DisabledItem(Base):
+    """Tracks built-in keywords/forums that have been disabled via Slack."""
+    __tablename__ = "disabled_items"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    item_type = Column(String(20), nullable=False)  # "keyword" or "forum"
+    item_key = Column(String(500), nullable=False)   # "group:pattern" or forum name
+    disabled_by = Column(String(100), default="")
+    disabled_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class StateManager:
     """Manages persistent state in SQLite to track processed posts.
 
@@ -265,3 +275,46 @@ class StateManager:
             results = session.query(ForumUserConfig).filter_by(enabled=True).all()
             session.expunge_all()
             return results
+
+    # ── Disabled Items Management ─────────────────────────────────
+
+    def disable_item(self, item_type, item_key, disabled_by=""):
+        """Disable a built-in keyword or forum. item_type: 'keyword' or 'forum'."""
+        with self._get_session() as session:
+            existing = session.query(DisabledItem).filter_by(
+                item_type=item_type, item_key=item_key
+            ).first()
+            if existing:
+                return  # Already disabled
+            item = DisabledItem(item_type=item_type, item_key=item_key, disabled_by=disabled_by)
+            session.add(item)
+            session.commit()
+            logger.info("item_disabled", item_type=item_type, item_key=item_key)
+
+    def enable_item(self, item_type, item_key):
+        """Re-enable a previously disabled built-in keyword or forum."""
+        with self._get_session() as session:
+            item = session.query(DisabledItem).filter_by(
+                item_type=item_type, item_key=item_key
+            ).first()
+            if item:
+                session.delete(item)
+                session.commit()
+                logger.info("item_enabled", item_type=item_type, item_key=item_key)
+
+    def list_disabled_items(self, item_type=None):
+        """List all disabled items, optionally filtered by type."""
+        with self._get_session() as session:
+            query = session.query(DisabledItem)
+            if item_type:
+                query = query.filter_by(item_type=item_type)
+            results = query.all()
+            session.expunge_all()
+            return results
+
+    def is_item_disabled(self, item_type, item_key):
+        """Check if a specific built-in item is disabled."""
+        with self._get_session() as session:
+            return session.query(DisabledItem).filter_by(
+                item_type=item_type, item_key=item_key
+            ).first() is not None
