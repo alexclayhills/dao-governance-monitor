@@ -3,10 +3,12 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ForumConfig(BaseModel):
+    """Configuration for a single forum to monitor."""
+
     name: str
     url: str
     type: str = "discourse"
@@ -15,6 +17,8 @@ class ForumConfig(BaseModel):
 
 
 class KeywordGroup(BaseModel):
+    """A named group of keyword patterns."""
+
     name: str
     patterns: list[str]
     title_weight: float = 2.0
@@ -22,20 +26,36 @@ class KeywordGroup(BaseModel):
 
 
 class MonitoringConfig(BaseModel):
-    poll_interval: int = 300
+    """Top-level monitoring configuration."""
+
+    poll_interval: int = 300  # seconds
     max_retries: int = 3
     timeout: int = 30
     detection_threshold: float = 1.5
 
 
 class SlackConfig(BaseModel):
-    webhook_url: str
+    """Slack notification configuration."""
+
+    webhook_url: Optional[str] = None
+    bot_token: Optional[str] = None
+    signing_secret: Optional[str] = None
+    app_token: Optional[str] = None
     channel: Optional[str] = None
     username: str = "DAO Governance Monitor"
     icon_emoji: str = ":bell:"
 
+    @field_validator("webhook_url", "bot_token", "signing_secret", "app_token", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
 
 class AppConfig(BaseModel):
+    """Complete application configuration."""
+
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     slack: SlackConfig
     forums: list[ForumConfig]
@@ -44,6 +64,8 @@ class AppConfig(BaseModel):
 
 
 class ForumPost(BaseModel):
+    """A normalized post from any forum."""
+
     forum_name: str
     post_id: str
     topic_id: str
@@ -58,13 +80,17 @@ class ForumPost(BaseModel):
 
 
 class KeywordMatch(BaseModel):
+    """A single keyword match result."""
+
     group: str
     pattern: str
-    location: str
+    location: str  # "title" or "body"
     matched_text: str
 
 
 class DetectionResult(BaseModel):
+    """Result of analyzing a post for governance keywords."""
+
     post: ForumPost
     triggered: bool
     score: float

@@ -17,10 +17,7 @@ def _substitute_env_vars(value: str) -> str:
         env_var = match.group(1)
         env_value = os.environ.get(env_var)
         if env_value is None:
-            raise ValueError(
-                f"Environment variable '{env_var}' is not set. "
-                f"Please set it or update your config file."
-            )
+            return ""  # Return empty string for unset optional vars
         return env_value
 
     return re.sub(pattern, replacer, value)
